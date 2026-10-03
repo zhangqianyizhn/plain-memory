@@ -8,7 +8,7 @@
 - SQLite 写入故障由触发器模拟，原消息/切片/维度记录均回滚。
 - 配置文件权限 0600；配置、隧道凭证路径及数据库被 Git 忽略。
 - embedding 配置只接受 base_url；协议适配器分别追加 `/embeddings` 或 `/embeddings/multimodal`，并拒绝在 base_url 中重复填写端点路径。
-- OpenViking 工作区已恢复干净；未配置远程 Git，也未推送。
+- OpenViking 工作区已恢复干净；PlainMemory 已作为独立仓库推送到 `https://github.com/zhangqianyizhn/plain-memory`。
 
 测试 embedding 是合成上游，不消耗用户 key；生产服务没有 fake 模型配置项。依赖中 Starlette TestClient 当前产生一个 httpx 弃用提示，测试通过，不影响生产 HTTP 调用。
 

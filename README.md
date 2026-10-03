@@ -143,4 +143,4 @@ uv run --frozen plain-memory --config config.local.yaml purge --user-id 'EXACT_U
 
 ## 来源与许可
 
-Apache-2.0。设计参考 [OpenViking](https://github.com/volcengine/OpenViking)（Volcengine）和 [DeepRead](https://github.com/zhangqianyizhn/DeepRead)。本项目独立实现最小服务，没有将上述工程作为运行依赖。参考职责、删减和融合改动见 [设计文档](docs/design.md)；来源说明见 [NOTICE](NOTICE)。当前实际模型、密钥、数据库及评测记忆不属于公开代码。
+Apache-2.0。设计参考 [OpenViking](https://github.com/volcengine/OpenViking)（ByteDance/Volcengine contributors）和 [DeepRead](https://github.com/zhangqianyizhn/DeepRead)（zhangqianyizhn 及仓库贡献者）。本项目独立实现最小服务，没有将上述工程作为运行依赖。参考职责、删减和融合改动见 [设计文档](docs/design.md)，当前部署容量、运行限制及完整改动披露见 [报名披露说明](docs/submission-disclosure.md)，来源说明见 [NOTICE](NOTICE)。当前实际模型、密钥、数据库及评测记忆不属于公开代码。
