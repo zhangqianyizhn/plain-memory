@@ -1,0 +1,18 @@
+# Copy to config.local.yaml, or run scripts/init_config.py. Never commit your local file.
+api_token: "GENERATE_LOCALLY"
+database: "data/smoke.sqlite3"
+chunk_tokens: 512
+overlap_tokens: 64
+max_body_bytes: 16777216
+add_concurrency: 1
+search_concurrency: 2
+add_timeout_seconds: 120
+search_timeout_seconds: 30
+embedding:
+  # One independent vector per message/chunk; never concatenate chunks into one input.
+  protocol: "doubao_multimodal"
+  base_url: "https://ark.cn-beijing.volces.com/api/plan/v3"
+  model: "doubao-embedding-vision"
+  api_key: "API-key"
+  dimensions: null  # Persist the actual returned dimension on the first successful write.
+  batch_size: 32    # Only applies to openai_compatible; Doubao multimodal is one input/call.

@@ -1,0 +1,18 @@
+# Formal model requirement. Endpoint/protocol/limits must be confirmed with your provider.
+# Use a NEW database when switching from the Doubao smoke model.
+api_token: "GENERATE_LOCALLY"
+database: "data/text-embedding-v4.sqlite3"
+chunk_tokens: 512
+overlap_tokens: 64
+max_body_bytes: 16777216
+add_concurrency: 1
+search_concurrency: 2
+add_timeout_seconds: 120
+search_timeout_seconds: 30
+embedding:
+  protocol: "openai_compatible"
+  base_url: "https://YOUR_PROVIDER/v1"
+  model: "text-embedding-v4"
+  api_key: "REPLACE_WITH_YOUR_PROVIDER_KEY"
+  dimensions: null
+  batch_size: 32

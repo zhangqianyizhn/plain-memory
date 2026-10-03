@@ -1,0 +1,11 @@
+.git
+.venv
+config*.yaml
+data
+tests
+__pycache__
+.pytest_cache
+.ruff_cache
+*.sqlite*
+*.db*
+*.log

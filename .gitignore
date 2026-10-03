@@ -1,0 +1,23 @@
+# Private runtime configuration; only examples may be published.
+config*.yaml
+!config.example.yaml
+!config.text-embedding-v4.example.yaml
+*.local.yaml
+*.local.yml
+.env
+.env.*
+!.env.example
+data/
+*.sqlite*
+*.db
+*.db-wal
+*.db-shm
+*.log
+.venv/
+.tools/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+.DS_Store

@@ -1,0 +1,17 @@
+PlainMemory
+
+Design references:
+- OpenViking — Beijing Volcano Engine Technology Co., Ltd. / Volcengine contributors
+  https://github.com/volcengine/OpenViking
+  Local reference license: Apache-2.0
+- DeepRead — authors/contributors identified in the upstream repository
+  https://github.com/zhangqianyizhn/DeepRead
+  Local reference license: Apache-2.0
+
+PlainMemory is an independent minimal Python implementation. It retains the
+HTTP/service separation, explicit user scoping, and normalized dense retrieval
+ideas, removes the full context filesystem, semantic extraction and Agent stack,
+uses SQLite atomic ingestion, and replaces weighted hybrid fusion with stable
+vector-first/BM25-second interleaving. The upstream projects are not runtime
+dependencies. Referenced licenses and original authors must be retained if code
+from those projects is copied into future versions.
