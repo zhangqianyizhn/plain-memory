@@ -16,7 +16,7 @@ Add 在同一个 HTTP 请求内完成切片、全部 embedding 和 SQLite 事务
 
 - 单机、单 Uvicorn worker、无高可用副本；Mac 必须保持供电、联网且不休眠，断电、断网、合盖、服务或 Tunnel 进程退出都会导致不可用。
 - 本地 SQLite WAL/FULL 是唯一持久化存储；不使用分布式数据库、向量数据库或常驻向量/BM25 索引。
-- Add 并发上限 1，Search 并发上限 2；超过上限立即返回 HTTP 429 和 `Retry-After: 1`。
+- Add 并发上限 16，Search 并发上限 2；超过上限立即返回 HTTP 429 和 `Retry-After: 1`。
 - 单个 POST 请求体上限 16 MiB，超限返回 413；Add 服务截止时间 120 秒，Search 为 30 秒。
 - 已验证 `top_k=100`；更大规模尚未压测。每次 Search 在目标用户的全部切片上执行 O(Nd) 的 NumPy 余弦计算并现场构建 BM25，因此定位为 Smoke/小规模服务，延迟和内存会随该用户切片数线性增长。
 - 默认每条消息按 cl100k_base 计数切为 512 token，重叠 64 token；短消息直接保存。该计数口径不等于 embedding 供应商 tokenizer。

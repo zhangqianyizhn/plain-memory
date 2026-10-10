@@ -176,6 +176,7 @@ def test_changed_dimension_fails_without_partial_write(settings, fake, headers):
 
 
 def test_concurrent_add_overload_and_completed_retry(settings, fake, headers):
+    settings.add_concurrency = 1
     entered, release = threading.Event(), threading.Event()
     original = fake.embed
 
