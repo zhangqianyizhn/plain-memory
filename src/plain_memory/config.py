@@ -42,7 +42,7 @@ class Settings(BaseModel):
     overlap_tokens: int = Field(default=64, ge=0)
     max_body_bytes: int = Field(default=16 * 1024 * 1024, ge=1)
     add_concurrency: int = Field(default=16, ge=16, le=64)
-    search_concurrency: int = Field(default=2, ge=1)
+    search_concurrency: int = Field(default=16, ge=16, le=256)
     add_timeout_seconds: float = Field(default=120, gt=0)
     search_timeout_seconds: float = Field(default=30, gt=0)
 

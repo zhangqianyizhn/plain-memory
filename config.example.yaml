@@ -5,7 +5,7 @@ chunk_tokens: 512
 overlap_tokens: 64
 max_body_bytes: 16777216
 add_concurrency: 16
-search_concurrency: 2
+search_concurrency: 16
 add_timeout_seconds: 120
 search_timeout_seconds: 30
 embedding:
