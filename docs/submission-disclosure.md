@@ -10,7 +10,7 @@ PlainMemory 0.1.0 部署在本机 macOS arm64，通过固定 Cloudflare Tunnel �
 
 Add 在同一个 HTTP 请求内完成切片、全部 embedding 和 SQLite 事务提交后才返回成功，不使用后台写入。Search 仅返回记忆证据，不生成答案；检索范围先按完整 `user_id` 隔离，同一用户可跨 `session_id` 检索。服务密钥、embedding API key、Cloudflare 凭证、数据库和评测数据均不在公开仓库中。
 
-当前在线部署用于报名连通性和 Smoke，实际使用 Doubao embedding 模型与 `https://ark.cn-beijing.volces.com/api/plan/v3` 协议。仓库提供 text-embedding-v4 的配置骨架和 OpenAI-compatible 适配器，但该正式模型尚未在当前部署中切换或验证；切换时将使用新数据库，避免混用不同模型的向量。
+当前代码固定使用阿里云百炼 `text-embedding-v4`，以北京工作空间根地址调用 `/embeddings`，默认 1024 维、每批最多 10 条，切换至独立数据库。另提供固定 NoneLinear `gpt-4o-mini` 的 `/chat/completions` 客户端，默认超时 180 秒；当前 Add/Search 算法未调用生成模型。两者的配置、Key 与服务设置统一在私密 `config.local.yaml` 中。2026-10-28 已完成真实双模型调用验证及公网合成 Add/Search 冒烟；不能据此宣称新版本已通过官方 Smoke。
 
 ## 容量和运行限制
 

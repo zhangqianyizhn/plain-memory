@@ -21,7 +21,14 @@ def interleave(vector_ids: list[str], bm25_ids: list[str], top_k: int) -> list[s
     return result
 
 
-def retrieve(rows: list[dict], query: str, query_vector: np.ndarray, top_k: int) -> list[dict]:
+def retrieve(
+    rows: list[dict],
+    query: str,
+    query_vector: np.ndarray,
+    top_k: int,
+    *,
+    trace: dict | None = None,
+) -> list[dict]:
     try:
         matrix = np.stack([np.frombuffer(row["embedding"], dtype="<f4") for row in rows])
         if matrix.shape[1] != len(query_vector) or not np.isfinite(matrix).all():
@@ -36,6 +43,7 @@ def retrieve(rows: list[dict], query: str, query_vector: np.ndarray, top_k: int)
     indexes = [i for i, terms in enumerate(term_lists) if terms]
     query_terms = lexical_terms(query)
     bm25_ids = []
+    bm25_ranking = []
     if indexes and query_terms:
         corpus = [term_lists[i] for i in indexes]
         scores = BM25Okapi(corpus).get_scores(query_terms)
@@ -43,7 +51,21 @@ def retrieve(rows: list[dict], query: str, query_vector: np.ndarray, top_k: int)
         matches = [j for j, terms in enumerate(corpus) if query_set.intersection(terms)]
         matches.sort(key=lambda j: (-scores[j], j))
         bm25_ids = [rows[indexes[j]]["id"] for j in matches[:top_k]]
+        if trace is not None:
+            bm25_ranking = [
+                {"id": rows[indexes[j]]["id"], "rank": rank + 1, "score": float(scores[j])}
+                for rank, j in enumerate(matches[:top_k])
+            ]
     ordered = interleave(vector_ids, bm25_ids, top_k)
+    if trace is not None:
+        trace.update(
+            vector=[
+                {"id": rows[i]["id"], "rank": rank + 1, "score": float(similarities[i])}
+                for rank, i in enumerate(vector_order)
+            ],
+            bm25=bm25_ranking,
+            fused_ids=ordered,
+        )
     by_id = {row["id"]: row for row in rows}
     result = []
     for chunk_id in ordered:

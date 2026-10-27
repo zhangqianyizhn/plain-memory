@@ -1,6 +1,6 @@
 # AML 开源文本赛道：报名与 Smoke 首版设计
 
-状态：2026-10-04 更新。首版源码、真实 Doubao 调用、Cloudflare HTTPS 公网链路和公开仓库均已完成验证。当前部署仍是报名/Smoke 版本，尚未切换或验证正式要求的 text-embedding-v4；容量与超时不能作为已经压测的承诺。
+状态：2026-10-28 更新。模型调用已精简为阿里云 text-embedding-v4 和 NoneLinear gpt-4o-mini，统一使用 config.local.yaml；49 项测试与真实双模型检查通过，本机和公网合成 Add/Search 冒烟通过。NoneLinear 等待预算为 180 秒，Add/Search 截止时间仍为 120/30 秒。旧供应商分支已移除，过去的官方 Smoke 记录仅作为旧版本验证；容量与超时不能作为已经压测的承诺。
 
 ## 1. 范围和推荐结论
 
@@ -82,9 +82,11 @@ created_at 有源 timestamp 时转为 UTC ISO-8601，否则使用持久化时间
 
 沿用现有评测工程的 token 计数口径，使用 tiktoken cl100k_base，版本由依赖锁固定。token 边界可能位于中文或 emoji 的 UTF-8 字节内部，必须在合法字符边界小幅调整切点；不允许通过替换字符掩盖解码损坏。因此实际长度/重叠可在边界处有少量偏差，保证原文无损。
 
-cl100k_base 是切片计数口径，不代表 embedding 供应商的 tokenizer 或最大输入长度。选定模型后单独验证最大输入、batch 大小和请求总 token 限制。建议 batch 初始值 32，供应商不支持批处理时在同一 HTTP 请求生命周期内分批编码，全部完成后才提交。
+cl100k_base 是切片计数口径，不代表 embedding 供应商的 tokenizer 或最大输入长度。当前固定阿里云 text-embedding-v4，每批最多 10 条，每条最多 8192 模型 token；在同一 HTTP 请求生命周期内分批编码，全部完成后才提交。
 
-正式模型要求是 text-embedding-v4；当前 Smoke 使用 Doubao，实际 base_url/model/key 均来自不入 Git 的本地 YAML。配置只保存服务根地址，具体 embedding 路径由协议适配器拼接：Doubao multimodal 使用 `/embeddings/multimodal`，通用协议使用 `/embeddings`。仅提供 doubao_multimodal 和 openai_compatible 两种所需协议，不开发多供应商插件框架。响应按供应商 index 对齐输入顺序，检查返回数量、维度、有限数值和非零向量。用 float32 保存，并做 L2 归一化；查询与入库必须使用同一模型、维度和规定的 query/document 输入方式。
+当前 Embedding 固定为阿里云百炼 text-embedding-v4，移除旧供应商分支和协议选择器。工作空间根地址后追加 `/embeddings`，请求浮点向量。响应按 index 对齐输入顺序，检查返回数量、维度、有限数值和非零向量。用 float32 保存，并做 L2 归一化；查询与入库使用同一模型及维度。`store_identity` 内保留固定协议标识以便数据库兼容校验。
+
+大模型调用固定为 NoneLinear `gpt-4o-mini` 的非流式 `/chat/completions`，没有供应商路由和模型回退。两种模型的配置与私密 Key 均放在唯一应用配置 `config.local.yaml` 中，由初始化脚本直接生成，不再维护多份模板。目前提供 LLM 客户端与双模型检查，尚未把生成调用加入 Add/Search 基线；后续算法实验另行披露。
 
 数据库记录 embedding 模型与维度、切片和词法版本。配置不兼容则拒绝使用旧库。更换模型需要新库或显式重建，不能把不兼容向量混存。外部 API 首版减少本机模型依赖；若供应商的数据使用/留存条款不符合赛事要求，再采用私有部署 embedding，需提前确认。
 
@@ -168,7 +170,7 @@ SSH 可达只证明 SSH 通路可用，不证明 AML 评测机器可访问 HTTP/
 
 ## 8. 验证、公开仓库和数据生命周期
 
-实施交付物保持少量文件：api.py（路由/协议/鉴权）、store.py（事务与读快照）、retrieval.py（两路检索与混排）、text.py（切片/词法）、embedding.py（实际供应商调用）、config.py；配套 pyproject/依赖锁、README、.env.example、Dockerfile、最小部署说明与协议测试。
+实施交付物保持少量文件：api.py（路由/协议/鉴权）、store.py（事务与读快照）、retrieval.py（两路检索与混排）、text.py（切片/词法）、embedding.py（百炼调用）、llm.py（NoneLinear 调用）、diagnostics.py（私密诊断）、config.py；配套依赖锁、README、单配置初始化脚本、Dockerfile、最小部署说明与协议测试。
 
 必要验收：
 
@@ -183,7 +185,7 @@ SSH 可达只证明 SSH 通路可用，不证明 AML 评测机器可访问 HTTP/
 
 公开 GitHub 仓库采用固定 commit/tag（例如 v0.1.0-smoke），README 明确方法、来源、删减、模型及部署容量。OpenViking 和 DeepRead 本地 LICENSE 均为 Apache-2.0；复用代码时保留许可、版权、适用 NOTICE 与修改说明，不仅在 README 放一个链接。新仓库默认建议 Apache-2.0，具体所有者和名称待提供。
 
-公开仓库只含代码、配置模板与人工合成测试样例，不含密钥、sqlite/db-wal/db-shm、embedding、副本、原始评测数据、请求内容日志。日志限耗时、状态码、计数和必要脱敏标识。
+公开仓库只含代码、配置初始化脚本与人工合成测试样例，不含密钥、sqlite/db-wal/db-shm、embedding、副本、原始评测数据、请求内容日志。默认诊断只含耗时、状态码、计数、候选排名和脱敏标识；获准调试的 Smoke 可限时启用本地私密正文捕获，默认 7 天清理，不导出到公开仓库。
 
 提供本地运维清理命令，按 user_id 或明确列出的 run 清单删除原消息、切片和幂等记录；API 契约没有 end-run 通知，需要由评测结束时间驱动清理。评测结束 30 天内同时清除数据库中的内容、WAL、备份与缓存；仅执行 DELETE 不保证文件中没有残留，需规划检查点与压缩/安全删除，私密卷需访问控制。不新增公网 Delete API。
 
@@ -191,11 +193,11 @@ SSH 可达只证明 SSH 通路可用，不证明 AML 评测机器可访问 HTTP/
 
 ## 9. 用户已确定的推进边界
 
-- 正式 embedding 模型要求 text-embedding-v4；当前 Smoke 用 Doubao。本地私密配置可更换供应商与模型，模板不含真实 key。
+- Embedding 固定为阿里云 text-embedding-v4，LLM 固定为 NoneLinear gpt-4o-mini；只有一份应用配置，不再维护供应商选择器或多份模型配置模板。
 - 系统名 PlainMemory，仓库名 plain-memory，独立建立在 Desktop；旧项目只移除本次新增设计文档，不改业务代码。
 - 用户创建远程 GitHub 仓库；本地项目先初始化 Git，不自动推送。
 - 优先本机 Mac，现有内网服务器不提供公网服务。
 - 报名、联系人、团队、Eval Key 及平台提交材料由用户负责，本项目不处理。
-- 当前验证边界为合成数据协议测试与本机 HTTP 链路。用户填入 Doubao key 后运行 scripts/smoke.py；域名/固定隧道配置后再验证公网。
+- 当前新版本验证边界为合成数据协议测试与本机 HTTP 链路。用户填写同一个文件内的两个 Key 后运行 check-models，启动服务再运行 scripts/smoke.py，随后验证公网。
 
 以 README 与实际实现为准；本文保留参考和设计理由，未验证项不能当作已交付能力。首版不运行官方 Smoke/Full，也不会自动启动评测。

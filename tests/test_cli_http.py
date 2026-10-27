@@ -3,6 +3,7 @@
 import json
 import os
 import socket
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -44,10 +45,10 @@ def test_real_cli_http_smoke_and_restart(tmp_path):
                 "api_token": "synthetic-public-token-at-least-32-bytes",
                 "database": "memory.sqlite3",
                 "embedding": {
-                    "protocol": "openai_compatible",
-                    "model": "synthetic-test-only",
+                    "model": "text-embedding-v4",
                     "base_url": f"http://127.0.0.1:{upstream.server_port}/v1",
                     "api_key": "synthetic-test-only",
+                    "dimensions": None,
                 },
             }
         )
@@ -112,6 +113,13 @@ def test_real_cli_http_smoke_and_restart(tmp_path):
         )
         assert smoke.returncode == 0, "Synthetic HTTP smoke failed"
         assert "PASS:" in smoke.stdout
+        with sqlite3.connect(tmp_path / "data/diagnostics.sqlite3") as conn:
+            recorded = [
+                json.loads(row[0]) for row in conn.execute("SELECT metadata_json FROM events")
+            ]
+        assert len(recorded) == 6
+        assert {event["operation"] for event in recorded} == {"add", "search"}
+        assert {event["status"] for event in recorded} == {200, 401}
         user_id = smoke.stdout.split("scope (safe to purge after stopping service): ")[1].strip()
         query = {"user_id": user_id, "query": "pet", "top_k": 100}
         with httpx.Client(trust_env=False) as client:

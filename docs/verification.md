@@ -20,4 +20,15 @@
 
 同日通过正式地址 `https://plainmemory.de5.net` 完成最终加密公网冒烟测试：健康检查、Bearer 鉴权、同步 Add、Search、幂等重试和用户隔离全部通过。测试时 macOS/Python 在 VPN 切换后出现一次本地 DNS 解析异常；测试进程临时固定到已验证的 Cloudflare Anycast IP，TLS 仍按 `plainmemory.de5.net` 校验证书和主机名。
 
-未验证：text-embedding-v4 调用、Docker 构建、性能容量、官方 AML Smoke/Full。官方评测与材料由用户处理。
+以上为旧版本历史记录；2026-10-28 起已删除旧供应商分支，以以下新版本验证为准。
+
+## 2026-10-28 统一配置与真实模型验证
+
+- 应用仅使用私密 `config.local.yaml`，阿里云 text-embedding-v4 和 NoneLinear gpt-4o-mini 的 Key 都从此文件加载，不读取其他项目的环境文件。
+- 49 项测试通过，Ruff 与 diff 空白检查通过；涉及单文件生成、批量与顺序、双模型请求格式、错误脱敏、超时、隔离、幂等和诊断持久化。NoneLinear 默认超时延长至 180 秒，测试同时验证调用方更短的 deadline 仍然生效。
+- 用户填写 Key 后，阿里云 text-embedding-v4 真实调用成功，维度 1024；使用新数据库，保留旧数据库。
+- 新版服务的本机与正式公网 `https://plainmemory.de5.net` 合成 Smoke 均通过：健康检查、Bearer、同步 Add、Search、幂等重试和用户隔离。新库有 2 个独立合成 Add、2 个切片，持久化维度为 1024；这不等于官方 AML Smoke 已通过。
+- 两轮 Smoke 的 12 条 POST 诊断记录包含 10 个 200 与 2 个预期鉴权拒绝 401，Add/Search 各 6 条。正文捕获关闭，元数据记录有效。
+- NoneLinear 最初在 60 秒预算下两次超时，公共 DNS 路由和未鉴权 POST 探测也曾超时；这些结果不足以归因于 Key。随后用户在供应商控制台确认请求 trace，并授权延长等待时间。将本地配置和默认超时调整为 180 秒后，直接运行 `check-models`，阿里云 text-embedding-v4 与 NoneLinear gpt-4o-mini 均通过，后者返回预期的 `NONELINEAR_OK`。本次使用常规网络路径，没有固定 DNS、切换供应商或更换模型。
+
+未验证：Docker 构建、Full 性能容量与新版本官方 AML Smoke/Full。旧版本官方 Smoke 得分由用户提供，新版本需重新验证。

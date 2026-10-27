@@ -53,9 +53,9 @@ def test_chinese_lexical_terms_and_common_term_small_corpus():
     assert retrieve(rows, "北京 orchid", np.ones(4), 100)[0]["id"] == "one"
 
 
-def test_model_switch_rejected_on_existing_database(settings, fake):
+def test_dimension_switch_rejected_on_existing_database(settings, fake):
     app = create_app(settings, embedder=fake)
     app.state.store.health()
-    settings.embedding.model = "text-embedding-v4"
+    settings.embedding.dimensions = 64
     with pytest.raises(StoreMismatch):
         create_app(settings, embedder=fake)

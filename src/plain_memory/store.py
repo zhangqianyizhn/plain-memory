@@ -152,7 +152,8 @@ class Store:
             return [
                 dict(row)
                 for row in conn.execute(
-                    "SELECT * FROM chunks WHERE user_id=? ORDER BY rowid", (user_id,)
+                    "SELECT rowid AS store_rowid, * FROM chunks WHERE user_id=? ORDER BY rowid",
+                    (user_id,),
                 ).fetchall()
             ]
 

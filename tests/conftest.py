@@ -33,11 +33,12 @@ def settings(tmp_path):
     return Settings(
         api_token="test-token-is-public-and-at-least-32-bytes",
         database=tmp_path / "memory.sqlite3",
+        diagnostics={"database": tmp_path / "diagnostics.sqlite3"},
         embedding={
-            "protocol": "openai_compatible",
             "base_url": "https://synthetic.invalid/v1",
-            "model": "synthetic-test-only",
+            "model": "text-embedding-v4",
             "api_key": "synthetic-test-only",
+            "dimensions": None,
         },
     )
 
