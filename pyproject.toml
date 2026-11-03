@@ -1,6 +1,6 @@
 [project]
 name = "plain-memory"
-version = "0.1.0"
+version = "0.2.0"
 description = "A small synchronous Add/Search memory service for AML."
 requires-python = ">=3.11"
 dependencies = [
@@ -10,6 +10,7 @@ dependencies = [
   "pydantic>=2.10,<3",
   "PyYAML>=6,<7",
   "rank-bm25>=0.2.2,<0.3",
+  "regex>=2025.9,<2027",
   "tiktoken>=0.9,<1",
   "uvicorn>=0.34,<1",
 ]

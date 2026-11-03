@@ -131,7 +131,7 @@ class DiagnosticMiddleware:
             "event_id": uuid.uuid4().hex,
             "started_at": datetime.now(timezone.utc).isoformat(),
             "operation": scope["path"][1:],
-            "method_version": "hybrid-interleave-v1",
+            "method_version": "hybrid-regex-interleave-v2",
             "store_identity_hash": self.recorder.store_identity_hash,
             "status": 500,
             "authenticated": False,

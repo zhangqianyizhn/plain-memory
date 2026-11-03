@@ -1,8 +1,8 @@
 # PlainMemory
 
-用于 AML 文本赛道接入的最小记忆服务。同步 Add；仅在请求 user_id 范围内做余弦向量与 BM25 检索；两路按向量第一、BM25 第一、向量第二、BM25 第二交替去重。Search 返回记忆证据，不生成答案。
+用于 AML 文本赛道接入的最小记忆服务。同步 Add；Search 在请求 user_id 的语料快照内执行余弦向量、BM25 和 LLM 规划的有序正则搜索，按“向量、BM25、正则”逐名次交替去重。LLM 不可用时恢复原两路检索。Search 返回原文记忆证据，不生成最终答案。
 
-当前版本：`0.1.0`，用于本地自测与 Smoke 准备。Embedding 固定为阿里云百炼 `text-embedding-v4`（1024 维），生成模型固定为 NoneLinear `gpt-4o-mini`。只有一份应用配置 `config.local.yaml`，不读取其他项目的 `.env`。没有使用正式评测数据进行开发。
+当前版本：`0.2.0`，用于本地自测与 Smoke 准备。Embedding 固定为阿里云百炼 `text-embedding-v4`（1024 维），生成模型固定为 NoneLinear `gpt-4o-mini`。只有一份应用配置 `config.local.yaml`，不读取其他项目的 `.env`。没有使用正式评测数据进行开发。
 
 ## 本机 Mac 启动
 
@@ -45,9 +45,9 @@ Authorization: Bearer <config.local.yaml 中的 api_token>
 
 百炼 v4 每批最多 10 条、每条最多 8192 模型 token；`batch_size` 默认为 10，配置校验拒绝超过 10 的值。维度 1024 是官方默认值；若修改维度，应使用新数据库。所有批次在同一次 Add 请求内完成后才提交数据库。切片计数器与供应商 tokenizer 不同；供应商拒绝超长问题时明确失败，不静默截断。接口规则见[官方同步向量 API 文档](https://help.aliyun.com/zh/model-studio/text-embedding-synchronous-api)。
 
-同一个文件的 `llm` 固定为 `https://api.nonelinear.com.cn/v1` 和 `gpt-4o-mini`，调用 `/chat/completions`，Bearer 鉴权，`stream: false`，默认 `temperature: 0`、`max_tokens: 2048`、超时 180 秒；若调用方传入更短的 deadline，仍使用剩余预算。调用方式与另一会话已验证的 NoneLinear 接入一致，使用现有 httpx 直接请求，无额外 SDK 依赖。接口见[NoneLinear 官方说明](https://docs.nonelinear.com.cn/api/chat-openai)。空回答、输出截断、返回不同模型或上游错误会明确失败，不记录请求正文或上游错误正文。当前 Add/Search 的 120/30 秒截止时间保持不变；以后接入 LLM 时必须遵守各自预算，不能直接占用完整 180 秒。
+同一个文件的 `llm` 固定为 `https://api.nonelinear.com.cn/v1` 和 `gpt-4o-mini`，调用 `/chat/completions`，Bearer 鉴权，`stream: false`，默认 `temperature: 0`、`max_tokens: 2048`、超时 180 秒；若调用方传入更短的 deadline，仍使用剩余预算。调用方式与另一会话已验证的 NoneLinear 接入一致，使用现有 httpx 直接请求，无额外 SDK 依赖。接口见[NoneLinear 官方说明](https://docs.nonelinear.com.cn/api/chat-openai)。空回答、输出截断、返回不同模型或上游错误会明确失败，不记录请求正文或上游错误正文。当前 Add/Search 的 120/30 秒截止时间保持不变；Search 的正则规划使用更短的阶段预算，不能占用完整 180 秒。总超时会取消网络请求，不遗留后台推理线程。
 
-生成模型客户端和统一检查入口已经提供；当前 Add/Search 基线仍执行切片、Embedding 和混排，尚未把 LLM 抽取、摘要或重排加入记忆算法。这些改动需要后续通过 Smoke 数据对照验证。Search 始终返回记忆证据，平台负责最终 Answer。
+v0.2 在 Search 中调用 LLM 生成有序正则，仅发送 query 与 options，不把整个用户语料发送给生成模型。正则在本地的目标用户语料中执行，返回内容仍来自原始切片；Add 不调用生成模型，不做事实抽取或摘要。检索效果需要通过下一轮官方 Smoke 对照验证，平台仍负责最终 Answer。
 
 改变 embedding base_url、维度或切片配置时指定新数据库，例如 `data/text-embedding-v4.sqlite3`。服务拒绝把不同配置混入旧数据库，不会默默清空旧数据或重建。默认 512 token 切片、64 token 重叠，cl100k_base 计数；中文/emoji 字符边界会小幅调整。该计数器不等同于供应商的 tokenizer。
 
@@ -74,7 +74,7 @@ Add 必填 `request_id`、`user_id`、`session_id`、`messages`；message 包含
 
 先编码全部切片，再在一个 SQLite WAL/FULL 事务里保存原始消息、向量、词项与请求完成记录。提交后才返回成功，不依赖后台任务。相同 user_id/request_id 的相同请求直接返回成功；相同标识但内容或 session 不同返回 422。空白消息持久化但不生成空白检索结果。
 
-Search 必填 query、user_id、top_k；可选 options 为字符串数组。选择题把 query 与 options 按顺序用于两路检索，不回答选择题。
+Search 必填 query、user_id、top_k；可选 options 为字符串数组。选择题把 query 与 options 按顺序用于三路检索，不回答选择题。
 
 ```json
 {"query": "What is my pet's name?", "user_id": "synthetic-user-1", "top_k": 100}
@@ -83,6 +83,30 @@ Search 必填 query、user_id、top_k；可选 options 为字符串数组。选�
 响应为 `{"data": [...]}`；条目包含稳定 id、非空 content、created_at，省略可选 score。content 带原 role 与存在时的源时间标签，随后是原文片段。无用户数据返回 `{"data": []}`。
 
 先隔离 user_id，再计算向量和 BM25，包括 BM25 的 IDF。session_id 只是来源信息，Search 不包含它，因此同 user 可跨 session；不同 user/不同运行不能共享。Bearer 服务密钥供单一受信任 AML 调用者访问本部署，不是面向多个客户的权限系统。
+
+## 有序正则检索与降级
+
+在唯一的 `config.local.yaml` 中配置：
+
+```yaml
+regex_search:
+  enabled: true
+  max_patterns: 5
+  timeout_seconds: 18
+  attempt_timeout_seconds: 8
+  max_attempts: 2
+  match_timeout_seconds: 0.5
+```
+
+正常三路模式中，x 为有效且去重后有序正则的个数（1–5）。每个正则按切片原始顺序取 `floor(top_k / (3*x))` 个匹配；各正则结果按表达式优先级轮流去重，正则路至多 `floor(top_k/3)` 条。向量路与 BM25 路也各至多 `floor(top_k/3)` 条，最终按 `V1, B1, R1, V2, B2, R2, ...` 去重返回。按稳定切片 id 去重，不合并内容相同但来源不同的记忆；名额不足或重复时不跨路补足。
+
+例如 `top_k=100, x=5`：每个正则最多 6 条，正则路最多 30 条；向量和 BM25 各最多 33 条，所以去重前最多 96 条。结果少于 top_k 是约定行为。top_k 小于 3 时不调用 LLM，使用原两路检索以保留小 top_k 的有效结果。
+
+LLM 默认最多尝试 2 次、每次最多 8 秒、阶段总预算 18 秒；瞬时网络错误、超时、限流、临时上游错误或非法计划可重试，鉴权等永久错误立即降级。退避也计入阶段预算。总预算受 Search 剩余时间约束，并预留至少 1 秒用于最终混排；网络超时会取消本次请求。表达式最多 256 字符，严格解析 JSON 并检查编译、空匹配，实际匹配既有单次时间限制也有 0.5 秒总预算。
+
+关闭该模式、LLM 未配置、规划最终失败、剩余预算不足或正则执行超时，均恢复原两路各取 top_k 后混排去重，至多返回 top_k 条。合法正则没有匹配时仍保留三路名额，不视作模型不可用。模型故障不会单独导致 Search 503；Embedding 或数据库故障继续按原接口处理。
+
+诊断元数据记录 `regex_search` 的状态、尝试次数、耗时、表达式数量与哈希、每个表达式命中数，以及最终 `fusion_mode`。正则字符串仅在限时私密正文捕获启用时保存。不同 user 和 run 不共享计划、缓存或匹配结果。
 
 默认并发上限 Add=16、Search=16；过载返回 429 和 `Retry-After: 1`。请求体默认最大 16 MiB，超限返回 413，不静默截断。非法输入 422，鉴权 401，临时 embedding/数据库故障 503。验证错误与上游错误不回显评测正文或上游响应。
 
@@ -94,6 +118,8 @@ Add/Search 的处理预算为 120/30 秒，HTTP 上游调用共享剩余预算�
 uv run --frozen pytest -q
 uv run --frozen ruff check .
 ```
+
+如果只运行本地进程内测试、不监听端口：`uv run --frozen pytest -q --ignore=tests/test_cli_http.py`。当前线上服务已由用户迁移到服务器，本地代码通过测试不代表服务器已经升级。
 
 单元/契约测试只使用合成向量，不消耗你的 API key，也不等于官方 AML Smoke。生产服务没有 fake 模型配置选项。
 
@@ -134,12 +160,12 @@ cloudflared tunnel --config deploy/cloudflared.local.yml run plain-memory
 没有 Docker 也可使用独立 Python/uv 运行相同命令。Dockerfile 提供可选 Python 3.13 容器路径，Mac 使用 arm64，Linux 使用 amd64；此环境尚未验证 Docker 构建。
 
 ```bash
-docker build -t plain-memory:0.1.0 .
+docker build -t plain-memory:0.2.0 .
 mkdir -p data
 docker run --rm -p 127.0.0.1:8000:8000 \
   --mount type=bind,src="$PWD/config.local.yaml",dst=/app/config.local.yaml,readonly \
   --mount type=bind,src="$PWD/data",dst=/app/data \
-  plain-memory:0.1.0
+  plain-memory:0.2.0
 ```
 
 不要把宿主 .venv 复制到容器。数据库挂载本地持久化目录，不使用容器临时层或 NFS。Mac 用隧道转发宿主 8000；云服务器可用 HTTPS 反向代理。数据库+NumPy 每次在用户快照内计算，适合 Smoke，小规模性能不代表 Full 性能。

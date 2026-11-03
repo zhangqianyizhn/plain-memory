@@ -464,7 +464,7 @@ wheels = [
 
 [[package]]
 name = "plain-memory"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
@@ -474,6 +474,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "rank-bm25" },
+    { name = "regex" },
     { name = "tiktoken" },
     { name = "uvicorn" },
 ]
@@ -492,6 +493,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.10,<3" },
     { name = "pyyaml", specifier = ">=6,<7" },
     { name = "rank-bm25", specifier = ">=0.2.2,<0.3" },
+    { name = "regex", specifier = ">=2025.9,<2027" },
     { name = "tiktoken", specifier = ">=0.9,<1" },
     { name = "uvicorn", specifier = ">=0.34,<1" },
 ]

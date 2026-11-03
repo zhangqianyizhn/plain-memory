@@ -1,3 +1,4 @@
+import asyncio
 import json
 import time
 
@@ -133,5 +134,26 @@ def test_longer_default_timeout_respects_callers_shorter_deadline():
         llm.complete([{"role": "user", "content": "synthetic"}], deadline=time.monotonic() + 2)
         assert 0 < observed[1]["read"] <= 2
         assert 0 < observed[1]["connect"] <= 2
+    finally:
+        llm.close()
+
+
+def test_total_timeout_cancels_network_work_instead_of_leaving_a_background_request():
+    cancelled = []
+
+    async def slow(request):
+        try:
+            await asyncio.sleep(2)
+            return httpx.Response(200, json=response())
+        finally:
+            cancelled.append(True)
+
+    llm = NoneLinearLLM(LLMConfig(api_key="synthetic-key"), transport=httpx.MockTransport(slow))
+    start = time.monotonic()
+    try:
+        with pytest.raises(LLMError, match="upstream_timeout"):
+            llm.complete([], deadline=time.monotonic() + 0.03)
+        assert time.monotonic() - start < 0.5
+        assert cancelled == [True]
     finally:
         llm.close()

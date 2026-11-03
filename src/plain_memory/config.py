@@ -45,6 +45,17 @@ class LLMConfig(BaseModel):
     timeout_seconds: float = Field(default=180, gt=0)
 
 
+class RegexSearchConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    max_patterns: int = Field(default=5, ge=1, le=5)
+    timeout_seconds: float = Field(default=18, gt=0)
+    attempt_timeout_seconds: float = Field(default=8, gt=0)
+    max_attempts: int = Field(default=2, ge=1, le=3)
+    match_timeout_seconds: float = Field(default=0.5, gt=0, le=5)
+
+
 class DiagnosticsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -72,6 +83,7 @@ class Settings(BaseModel):
     database: Path
     embedding: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
+    regex_search: RegexSearchConfig = Field(default_factory=RegexSearchConfig)
     chunk_tokens: int = Field(default=512, ge=4)
     overlap_tokens: int = Field(default=64, ge=0)
     max_body_bytes: int = Field(default=16 * 1024 * 1024, ge=1)

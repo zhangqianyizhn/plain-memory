@@ -1,6 +1,6 @@
 # AML 开源文本赛道：报名与 Smoke 首版设计
 
-状态：2026-10-28 更新。模型调用已精简为阿里云 text-embedding-v4 和 NoneLinear gpt-4o-mini，统一使用 config.local.yaml；49 项测试与真实双模型检查通过，本机和公网合成 Add/Search 冒烟通过。NoneLinear 等待预算为 180 秒，Add/Search 截止时间仍为 120/30 秒。旧供应商分支已移除，过去的官方 Smoke 记录仅作为旧版本验证；容量与超时不能作为已经压测的承诺。
+状态：2026-10-28 更新。模型调用已精简为阿里云 text-embedding-v4 和 NoneLinear gpt-4o-mini，统一使用 config.local.yaml；v0.2.0 已通过 73 项测试与真实正则规划候选验证。NoneLinear 独立调用等待预算为 180 秒；Search 正则规划最多两次各 8 秒，总预算 18 秒，Add/Search 截止时间仍为 120/30 秒。旧供应商分支已移除，过去的官方 Smoke 记录仅作为旧版本验证；容量与超时不能作为已经压测的承诺。
 
 ## 1. 范围和推荐结论
 
@@ -8,7 +8,7 @@
 
 对外只有 POST /add、POST /search 和轻量无鉴权健康检查；不生成答案。删除原系统中的 AGFS、viking URI、层级摘要、资源解析、语义记忆抽取、队列、多轮 Agent、重排器、图存储、管理后台和 Rust/C++/Go 构建依赖。这里的删减是提取所需职责后形成独立最小实现，不把完整 OpenViking 作为运行依赖，也不改动现有评测流水线。
 
-按用户确认，现有 Linux 服务器为内网环境，不作为公网部署目标。优先在 Mac 运行，通过固定命名 Cloudflare Tunnel 提供稳定 HTTPS 入口；localhost 无法满足公网报名要求。系统名 PlainMemory，仓库名 plain-memory，项目位于 Desktop/plain-memory。
+用户已将服务迁移到 Linux 服务器，通过固定命名 Cloudflare Tunnel 提供 HTTPS 入口；初期优先 Mac 的部署决定已被此次迁移替代。系统名 PlainMemory，仓库名 plain-memory，本地项目位于 Desktop/plain-memory。本轮仅验证本地 0.2.0，不探测端口或公网，不操作服务器。
 
 ## 2. 参考依据与当前不确定项
 
@@ -44,7 +44,7 @@ Health: https://<域名>/health
 Auth:   Authorization: Bearer <MEMORY_API_TOKEN>
 ```
 
-Bearer 是请求头的写法，不要求使用 JWT。生成至少 32 字节的加密随机值，服务通过环境变量读取，使用常量时间比较。密钥缺失或错误返回 401；服务缺少密钥配置则启动失败。Add/Search 共用一枚评测专用密钥，仅对应本部署的 AML 访问者。首版不承诺开放给多个不互信的客户。
+Bearer 是请求头的写法，不要求使用 JWT。生成至少 32 字节的加密随机值，服务从私密 config.local.yaml 读取，使用常量时间比较。密钥缺失或错误返回 401；服务缺少密钥配置则启动失败。Add/Search 共用一枚评测专用密钥，仅对应本部署的 AML 访问者。首版不承诺开放给多个不互信的客户。
 
 HTTPS 保护密钥与评测文本在传输过程中的私密性；只绑定后端到 127.0.0.1，由 Caddy 或同等反向代理提供 HTTPS。无需账号、登录、OAuth、JWT、注册或密钥管理后台。无鉴权 GET /health 只给出就绪状态；可同时支持 GET /add、GET /search 返回相同轻量健康状态，兼容对绑定接口地址直接 GET 的探测。
 
@@ -64,7 +64,7 @@ HTTPS 保护密钥与评测文本在传输过程中的私密性；只绑定后�
 
 ### Search
 
-校验 query 字符串、user_id 字符串、top_k 正整数和可选 options 字符串数组。选择题将 query 和 options 按原顺序拼成同一个检索文本，供两路检索使用；不预测选项、不生成答案。开放题使用 query 本身。
+校验 query 字符串、user_id 字符串、top_k 正整数和可选 options 字符串数组。选择题将 query 和 options 按原顺序拼成同一个检索文本，供三路检索使用；不预测选项、不生成答案。开放题使用 query 本身。
 
 只返回 `{"data": [...]}`；空库或没有候选时返回 `{"data": []}`。每项只需稳定 id 和非空 content；可附 created_at。首版省略可选 score，避免把不同量纲的 BM25 分数和余弦分数当作统一相关性分数。返回顺序就是融合排名，不再额外按原始分数排序。正式 top_k=100，必须支持；结果可以少于 top_k，但不得更多。
 
@@ -86,7 +86,7 @@ cl100k_base 是切片计数口径，不代表 embedding 供应商的 tokenizer �
 
 当前 Embedding 固定为阿里云百炼 text-embedding-v4，移除旧供应商分支和协议选择器。工作空间根地址后追加 `/embeddings`，请求浮点向量。响应按 index 对齐输入顺序，检查返回数量、维度、有限数值和非零向量。用 float32 保存，并做 L2 归一化；查询与入库使用同一模型及维度。`store_identity` 内保留固定协议标识以便数据库兼容校验。
 
-大模型调用固定为 NoneLinear `gpt-4o-mini` 的非流式 `/chat/completions`，没有供应商路由和模型回退。两种模型的配置与私密 Key 均放在唯一应用配置 `config.local.yaml` 中，由初始化脚本直接生成，不再维护多份模板。目前提供 LLM 客户端与双模型检查，尚未把生成调用加入 Add/Search 基线；后续算法实验另行披露。
+大模型调用固定为 NoneLinear `gpt-4o-mini` 的非流式 `/chat/completions`，没有供应商路由和模型回退。两种模型的配置与私密 Key 均放在唯一应用配置 `config.local.yaml` 中，由初始化脚本直接生成，不再维护多份模板。v0.2 在 Search 中生成最多 5 个有序正则，在本地用户快照内匹配；只发送 query/options，不发送整个语料，不生成最终答案。Add 仍不调用 LLM。
 
 数据库记录 embedding 模型与维度、切片和词法版本。配置不兼容则拒绝使用旧库。更换模型需要新库或显式重建，不能把不兼容向量混存。外部 API 首版减少本机模型依赖；若供应商的数据使用/留存条款不符合赛事要求，再采用私有部署 embedding，需提前确认。
 
@@ -121,9 +121,9 @@ store_meta:
 
 事务内所有切片与完成记录一起提交，失败全部回滚。提交后连接断开也不影响平台重试；重试识别已完成记录并返回成功。并发同 key 最终由唯一约束和事务内复查保证只提交一份，首版 Add 并发上限 16，取评测允许范围的下限以控制本机和 embedding 上游压力。
 
-单进程 Uvicorn，SQLite WAL、synchronous=FULL、busy_timeout；持久化目录在本地文件系统/持久化卷，不放在 NFS 或容器临时层。Search 一次读取仅含目标 user_id 的数据库快照，从这个快照同时构建两路检索。首版没有长驻向量或 BM25 缓存，故不存在缓存更新完成前就返回 Add 成功的问题。
+单进程 Uvicorn，SQLite WAL、synchronous=FULL、busy_timeout；持久化目录在本地文件系统/持久化卷，不放在 NFS 或容器临时层。Search 一次读取仅含目标 user_id 的数据库快照，三路检索均使用这个快照。首版没有长驻向量或 BM25 缓存，故不存在缓存更新完成前就返回 Add 成功的问题。
 
-## 6. 两路检索与隔离
+## 6. 三路检索与隔离
 
 向量路：先 `WHERE user_id = ?` 读取该用户切片，组装 NumPy 矩阵；查询归一化后计算矩阵点积即余弦相似度，稳定排序取前 top_k。
 
@@ -135,7 +135,9 @@ session_id 只组织来源。Search 契约不含 session_id，所以同一个 us
 
 只有一个受信任的 AML 调用者时，固定 Bearer 密钥允许访问本部署中的评测 user_id；这不是面向多个客户的用户授权系统。未来多客户场景必须增加 credential→namespace 映射，再按 namespace+user_id 隔离，首版不提前引入。
 
-按用户要求融合：遍历 `V1, B1, V2, B2, ...`，按稳定 chunk id 去重，保留第一次出现位置，收集到 top_k 即停止。一条路不足时继续另一条路。
+v0.2 正常模式：每个有序正则先取 floor(top_k/(3*x)) 个匹配，按原始切片顺序检索，再轮流去重得到正则路；向量、BM25、正则各至多 floor(top_k/3) 条，按 V1、B1、R1、V2、B2、R2 顺序混排，按稳定切片 id 去重。去重不补足配额；top_k=100 且 x=5 时，三路分别最多 33、33、30 条。
+
+LLM 超时、临时上游错误、限流或非法计划可在 18 秒阶段预算内重试，默认最多两次各 8 秒；鉴权错误立即降级。匹配总预算为 0.5 秒。预算不足、最终失败、匹配超时、模式关闭或 top_k<3 时，恢复原两路各取 top_k 后的混排。下面是降级模式的例子：
 
 ```text
 V = [A, B, C, D]
@@ -144,7 +146,7 @@ B = [B, E, A, F]
 top_k=4 时返回 [A, B, E, C]
 ```
 
-这里只消除两路召回的同一切片；不会合并不同时间、role、session 中恰好相同的文本，以免丢失独立事件。BM25 与向量分数不做加权，初版不增加 RRF 或模型重排。
+这里只消除三路召回的同一切片；不会合并不同时间、role、session 中恰好相同的文本，以免丢失独立事件。BM25 与向量分数不做加权，初版不增加 RRF 或模型重排。
 
 代价：每次 Search 都有 O(Nd) 向量计算与用户内 BM25 构建开销；适合 Smoke 和小语料，不能据此承诺 Full 性能。例：每用户 10,000 切片、1,024 维，向量矩阵约 39 MiB，尚未包含文本、数据库和临时数组。未来按实际瓶颈再增加有界的用户缓存或索引，不作为首版依赖。
 
@@ -157,12 +159,12 @@ SSH 可达只证明 SSH 通路可用，不证明 AML 评测机器可访问 HTTP/
 | 位置 | 对首版的判断 | 必须补齐的条件 |
 |---|---|---|
 | 本机 Mac | 开发、自测适合；公网报名有条件可用 | 固定公网入口或命名隧道、稳定 TLS、持续供电/不休眠、稳定网络；临时隧道地址不适合固定版本 |
-| 现有 Linux | 计算资源充分，但用户已确认内网限制，当前不采用 | 若以后迁移，需要新的公网入口条件 |
+| 现有 Linux | 用户已部署服务，内网通过 Tunnel 提供 HTTPS 入口 | 服务、Tunnel、网络持续运行；本轮不检查远端状态 |
 | 租赁云服务器 | 现有服务器的网络/权限条件不满足时采用 | 固定公网 IP、域名/TLS、出站可达；2–4 vCPU、4–8 GB RAM 是 Smoke 起点，Full 规格待压测 |
 
 独立项目支持 Python 3.11+，本机验证使用现有 Python 3.13 独立虚拟环境；Mac 系统 Python 3.9 不适用。源码已脱离原有 workspace，未修改原工程解释器或依赖。
 
-当前默认使用 Mac 原生 Python/uv + 固定隧道；不安装或部署到内网服务器。Dockerfile 只是后续迁移的可选路径，尚未在当前无 Docker 的环境验证构建。Apple Silicon 使用 arm64 镜像，服务器使用 amd64 镜像，分别构建或发布双架构镜像；不拷贝 Mac 虚拟环境到 Linux。
+当前服务器部署由用户维护，Mac 原生 Python/uv 用于本地开发验证。Dockerfile 提供可选容器路径，尚未验证构建。Apple Silicon 使用 arm64 镜像，服务器使用 amd64 镜像，分别构建或发布双架构镜像；不拷贝 Mac 虚拟环境到 Linux。
 
 不依赖 GPU、host.docker.internal、特定 CPU 指令或宿主绝对路径。连接 embedding API 从容器网络实际验证。依赖版本与 token 编码器缓存随发布准备好，避免首次启动隐式下载失败。
 
@@ -170,7 +172,7 @@ SSH 可达只证明 SSH 通路可用，不证明 AML 评测机器可访问 HTTP/
 
 ## 8. 验证、公开仓库和数据生命周期
 
-实施交付物保持少量文件：api.py（路由/协议/鉴权）、store.py（事务与读快照）、retrieval.py（两路检索与混排）、text.py（切片/词法）、embedding.py（百炼调用）、llm.py（NoneLinear 调用）、diagnostics.py（私密诊断）、config.py；配套依赖锁、README、单配置初始化脚本、Dockerfile、最小部署说明与协议测试。
+实施交付物保持少量文件：api.py（路由/协议/鉴权）、store.py（事务与读快照）、retrieval.py（候选排名与混排）、regex_search.py（LLM 正则计划与有序匹配）、text.py（切片/词法）、embedding.py（百炼调用）、llm.py（NoneLinear 调用）、diagnostics.py（私密诊断）、config.py；配套依赖锁、README、单配置初始化脚本、Dockerfile、最小部署说明与协议测试。
 
 必要验收：
 
@@ -195,9 +197,9 @@ SSH 可达只证明 SSH 通路可用，不证明 AML 评测机器可访问 HTTP/
 
 - Embedding 固定为阿里云 text-embedding-v4，LLM 固定为 NoneLinear gpt-4o-mini；只有一份应用配置，不再维护供应商选择器或多份模型配置模板。
 - 系统名 PlainMemory，仓库名 plain-memory，独立建立在 Desktop；旧项目只移除本次新增设计文档，不改业务代码。
-- 用户创建远程 GitHub 仓库；本地项目先初始化 Git，不自动推送。
-- 优先本机 Mac，现有内网服务器不提供公网服务。
+- 远程仓库已建立，0.1.0 已推送；0.2.0 当前在本地分支 codex/regex-retrieval，尚未发布。
+- 服务已迁移至服务器，本轮仅本地测试，不启动服务、检查端口、访问公网或更新服务器。
 - 报名、联系人、团队、Eval Key 及平台提交材料由用户负责，本项目不处理。
-- 当前新版本验证边界为合成数据协议测试与本机 HTTP 链路。用户填写同一个文件内的两个 Key 后运行 check-models，启动服务再运行 scripts/smoke.py，随后验证公网。
+- 当前新版本以合成数据单元/进程内 ASGI 契约测试为最终验证；此前另有本地真实模型候选验证。新版官方 Smoke 效果仍待后续评测，不把旧版公网结果作为 0.2.0 上线证明。
 
 以 README 与实际实现为准；本文保留参考和设计理由，未验证项不能当作已交付能力。首版不运行官方 Smoke/Full，也不会自动启动评测。

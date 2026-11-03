@@ -2,7 +2,7 @@
 
 ## 已部署服务
 
-PlainMemory 0.1.0 部署在本机 macOS arm64，通过固定 Cloudflare Tunnel 提供 HTTPS：
+用户已将 PlainMemory 服务迁移到 Linux 服务器，通过固定 Cloudflare Tunnel 提供 HTTPS。以下地址为现有服务入口；本文描述的 0.2.0 为本地待发布版本，本轮未升级或验证服务器上的版本：
 
 - Add：`https://plainmemory.de5.net/add`
 - Search：`https://plainmemory.de5.net/search`
@@ -10,11 +10,11 @@ PlainMemory 0.1.0 部署在本机 macOS arm64，通过固定 Cloudflare Tunnel �
 
 Add 在同一个 HTTP 请求内完成切片、全部 embedding 和 SQLite 事务提交后才返回成功，不使用后台写入。Search 仅返回记忆证据，不生成答案；检索范围先按完整 `user_id` 隔离，同一用户可跨 `session_id` 检索。服务密钥、embedding API key、Cloudflare 凭证、数据库和评测数据均不在公开仓库中。
 
-当前代码固定使用阿里云百炼 `text-embedding-v4`，以北京工作空间根地址调用 `/embeddings`，默认 1024 维、每批最多 10 条，切换至独立数据库。另提供固定 NoneLinear `gpt-4o-mini` 的 `/chat/completions` 客户端，默认超时 180 秒；当前 Add/Search 算法未调用生成模型。两者的配置、Key 与服务设置统一在私密 `config.local.yaml` 中。2026-10-28 已完成真实双模型调用验证及公网合成 Add/Search 冒烟；不能据此宣称新版本已通过官方 Smoke。
+当前代码固定使用阿里云百炼 `text-embedding-v4`，以北京工作空间根地址调用 `/embeddings`，默认 1024 维、每批最多 10 条。另提供固定 NoneLinear `gpt-4o-mini` 的 `/chat/completions` 客户端，独立调用默认超时 180 秒；Search 正则规划阶段使用更短的预算，最多两次各 8 秒、总预算 18 秒。Search 将 query/options 发给模型生成最多 5 个有序正则，并在本地用户语料中执行。Add 不调用生成模型，Search 返回原文证据，平台负责最终 Answer。两者的配置、Key 与服务设置统一在私密 `config.local.yaml` 中。2026-10-28 已完成本地真实双模型与正则候选验证；此前公网冒烟不能证明 0.2.0 已上线，也不能据此宣称通过官方 Smoke。升级正则检索不改变存储身份，无需重建现有兼容的向量库。
 
 ## 容量和运行限制
 
-- 单机、单 Uvicorn worker、无高可用副本；Mac 必须保持供电、联网且不休眠，断电、断网、合盖、服务或 Tunnel 进程退出都会导致不可用。
+- 单机、单 Uvicorn worker、无高可用副本；服务器、服务进程、Tunnel 与网络需持续运行。Mac 当前用于本地开发，合盖不影响已迁移的服务器服务；本轮未检查服务器运行状态。
 - 本地 SQLite WAL/FULL 是唯一持久化存储；不使用分布式数据库、向量数据库或常驻向量/BM25 索引。
 - Add 并发上限 16，Search 并发上限 16；超过上限立即返回 HTTP 429 和 `Retry-After: 1`。
 - 单个 POST 请求体上限 16 MiB，超限返回 413；Add 服务截止时间 120 秒，Search 为 30 秒。
@@ -38,6 +38,6 @@ PlainMemory 是独立的最小 Python 实现；OpenViking 和 DeepRead 不是运
 2. Add 改为强制同步：所有切片完成 embedding 并在单个 SQLite 事务中原子提交后才返回 200；新增 `(user_id, request_id)` 幂等、请求体哈希冲突检查、稳定 chunk id、失败回滚和重试安全。
 3. 参考 DeepRead 的 HTTP embedding、L2 归一化和余弦检索；把 corpus/embedding/id-map 多文件存储替换为 SQLite 原始消息、切片、float32 向量、BM25 词项和模型元数据的原子持久化。
 4. 新增固定 512-token/64-token-overlap 的逐消息切片，保留 role、timestamp、message/session 来源；不跨消息或跨 session 拼接，不进行 LLM 摘要或事实抽取。
-5. 向量路和 BM25 路均先按完整 `user_id` 隔离，各自取 top-k；BM25 使用轻量英文词/数字与中文单字、双字词项。融合由 DeepRead 风格的加权混合改为稳定的 `V1, B1, V2, B2, ...` 交替去重，不使用加权分数、RRF、重排器或生成模型。
+5. 三路均先按完整 `user_id` 隔离。BM25 使用轻量英文词/数字与中文单字、双字词项；新正则路由 NoneLinear gpt-4o-mini 根据 query/options 生成有序表达式，每个表达式取 floor(top_k/(3*x)) 个匹配后轮流去重。正常模式每路最多 floor(top_k/3) 条，融合按 `V1, B1, R1, V2, B2, R2, ...` 交替去重，不做加权、RRF 或重排。模型最终失败、匹配超时、预算不足或 top_k<3 时恢复原两路 top_k 混排；合法正则无命中仍遵守三路名额，不跨路补足。
 6. 新增 AML Add/Search 严格请求/响应契约、Bearer 鉴权、16 MiB 请求上限、并发信号量、120/30 秒截止时间、429/413/422/503 行为和不回显正文/凭证的错误处理。
 7. Search 只返回带稳定 id、原 role/时间标签和原文片段的证据，不回答问题；`options` 只加入检索查询。不同用户和不同评测运行不共享数据，同一用户允许跨 session 检索。

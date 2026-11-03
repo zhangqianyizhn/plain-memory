@@ -1,5 +1,6 @@
 """NoneLinear gpt-4o-mini, non-streaming Chat Completions with no automatic retries."""
 
+import asyncio
 import time
 from dataclasses import dataclass
 
@@ -27,33 +28,47 @@ class NoneLinearLLM:
         if not key or key.startswith("REPLACE_"):
             raise ValueError("Set llm.api_key in config.local.yaml.")
         self.config = config
-        self.client = httpx.Client(
-            headers={"Authorization": f"Bearer {key}"},
-            follow_redirects=False,
-            transport=transport,
-        )
+        self.headers = {"Authorization": f"Bearer {key}"}
+        self.transport = transport
+        self.closed = False
 
     def close(self):
-        self.client.close()
+        self.closed = True
 
     def complete(self, messages: list[dict], *, deadline: float | None = None) -> Completion:
+        if self.closed:
+            raise LLMError("client_closed")
         remaining = self.config.timeout_seconds
         if deadline is not None:
             remaining = min(remaining, deadline - time.monotonic())
         if remaining <= 0:
             raise LLMError("deadline")
+
+        async def request():
+            # Each call owns its connection and event loop. The total timeout cancels
+            # connect/read/write/pool work, including responses that trickle in slowly.
+            async with httpx.AsyncClient(
+                headers=self.headers,
+                transport=self.transport,
+                follow_redirects=False,
+            ) as client:
+                return await asyncio.wait_for(
+                    client.post(
+                        self.config.base_url + "/chat/completions",
+                        json={
+                            "model": self.config.model,
+                            "messages": messages,
+                            "temperature": self.config.temperature,
+                            "max_tokens": self.config.max_tokens,
+                            "stream": False,
+                        },
+                        timeout=httpx.Timeout(remaining, connect=min(5, remaining)),
+                    ),
+                    timeout=remaining,
+                )
+
         try:
-            response = self.client.post(
-                self.config.base_url + "/chat/completions",
-                json={
-                    "model": self.config.model,
-                    "messages": messages,
-                    "temperature": self.config.temperature,
-                    "max_tokens": self.config.max_tokens,
-                    "stream": False,
-                },
-                timeout=httpx.Timeout(remaining, connect=min(5, remaining)),
-            )
+            response = asyncio.run(request())
             response.raise_for_status()
             result = response.json()
             choice = result["choices"][0]
@@ -73,7 +88,7 @@ class NoneLinearLLM:
             raise
         except httpx.HTTPStatusError as exc:
             raise LLMError("upstream_http", exc.response.status_code) from None
-        except httpx.TimeoutException:
+        except (httpx.TimeoutException, TimeoutError):
             raise LLMError("upstream_timeout") from None
         except (httpx.HTTPError, ValueError, TypeError, KeyError, IndexError):
             raise LLMError("invalid_response") from None

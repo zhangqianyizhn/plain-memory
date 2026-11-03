@@ -18,7 +18,9 @@ from plain_memory import __version__
 from plain_memory.config import Settings
 from plain_memory.diagnostics import DiagnosticMiddleware, Diagnostics
 from plain_memory.embedding import EmbeddingError, HTTPEmbedder, normalize_vectors
-from plain_memory.retrieval import retrieve
+from plain_memory.llm import NoneLinearLLM
+from plain_memory.regex_search import RegexRetriever
+from plain_memory.retrieval import merge_results, rank_candidates
 from plain_memory.store import RequestConflict, Store, StoreMismatch, payload_hash
 from plain_memory.text import chunks, lexical_terms
 
@@ -91,7 +93,7 @@ def capacity(semaphore):
         semaphore.release()
 
 
-def create_app(settings: Settings, *, embedder=None) -> FastAPI:
+def create_app(settings: Settings, *, embedder=None, llm=None) -> FastAPI:
     token = settings.api_token.get_secret_value()
     if len(token.encode()) < 32 or token == "GENERATE_LOCALLY":
         raise ValueError("Set a random api_token (at least 32 bytes) in the private local config.")
@@ -104,6 +106,17 @@ def create_app(settings: Settings, *, embedder=None) -> FastAPI:
     add_slots = threading.BoundedSemaphore(settings.add_concurrency)
     search_slots = threading.BoundedSemaphore(settings.search_concurrency)
     diagnostics = Diagnostics(settings)
+    if settings.regex_search.enabled and llm is None:
+        try:
+            llm = NoneLinearLLM(
+                settings.llm.model_copy(
+                    update={"max_tokens": min(settings.llm.max_tokens, 512), "temperature": 0}
+                )
+            )
+        except ValueError:
+            # An unset optional LLM key must not disable Add or the original Search routes.
+            pass
+    regex_retriever = RegexRetriever(settings.regex_search, llm)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -127,6 +140,8 @@ def create_app(settings: Settings, *, embedder=None) -> FastAPI:
                 except asyncio.CancelledError:
                     pass
             encoder.close()
+            if llm is not None:
+                llm.close()
 
     app = FastAPI(
         title="PlainMemory",
@@ -138,6 +153,7 @@ def create_app(settings: Settings, *, embedder=None) -> FastAPI:
     )
     app.state.store = store
     app.state.diagnostics = diagnostics
+    app.state.regex_retriever = regex_retriever
     app.add_middleware(BodyLimit, maximum=settings.max_body_bytes)
     app.add_middleware(DiagnosticMiddleware, recorder=diagnostics)
 
@@ -288,8 +304,26 @@ def create_app(settings: Settings, *, embedder=None) -> FastAPI:
             )[0]
             event["embedding_ms"] = round((time.monotonic() - encode_start) * 1000, 3)
             retrieval_start = time.monotonic()
+            rankings = rank_candidates(rows, query, vector, request.top_k)
+            event["ranking_ms"] = round((time.monotonic() - retrieval_start) * 1000, 3)
+            regex_trace = {}
+            regex_ids = regex_retriever.search(
+                rows,
+                query,
+                request.top_k,
+                deadline,
+                regex_trace,
+                private_trace=event.get("content"),
+            )
+            event["regex_search"] = regex_trace
             trace = {}
-            result = retrieve(rows, query, vector, request.top_k, trace=trace)
+            result = merge_results(
+                rows,
+                rankings,
+                request.top_k,
+                regex_ids=regex_ids,
+                trace=trace,
+            )
             event["retrieval_ms"] = round((time.monotonic() - retrieval_start) * 1000, 3)
             event.update(result_count=len(result), retrieval=trace)
             if time.monotonic() >= deadline:

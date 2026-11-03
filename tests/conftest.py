@@ -34,6 +34,7 @@ def settings(tmp_path):
         api_token="test-token-is-public-and-at-least-32-bytes",
         database=tmp_path / "memory.sqlite3",
         diagnostics={"database": tmp_path / "diagnostics.sqlite3"},
+        regex_search={"enabled": False},
         embedding={
             "base_url": "https://synthetic.invalid/v1",
             "model": "text-embedding-v4",
