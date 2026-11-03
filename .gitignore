@@ -1,13 +1,13 @@
-# Private runtime configuration; only examples may be published.
+# One private application configuration, generated locally by scripts/init_config.py.
 config*.yaml
-!config.example.yaml
-!config.text-embedding-v4.example.yaml
 *.local.yaml
 *.local.yml
 .env
 .env.*
 !.env.example
 data/
+diagnostics/
+*.jsonl
 *.sqlite*
 *.db
 *.db-wal
